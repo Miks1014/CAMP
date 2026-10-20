@@ -1,0 +1,66 @@
+# Camp Mayagay - one MySQL database + one PHP/Apache web container.
+# No XAMPP needed:   docker compose up -d --build   ->   http://localhost:8080
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-change-me-root}
+      MYSQL_DATABASE: ${DB_NAME:-camp_mayagay}
+      MYSQL_USER: ${DB_USER:-camp}
+      MYSQL_PASSWORD: ${DB_PASS:-change-me}
+      TZ: Asia/Manila
+    ports:
+      # reachable from VS Code / MySQL Workbench on this computer only
+      - "127.0.0.1:${DB_HOST_PORT:-3307}:3306"
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - db_data:/var/lib/mysql
+      # runs once, on first start only (empty data volume)
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  web:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    environment:
+      DB_HOST: db
+      DB_NAME: ${DB_NAME:-camp_mayagay}
+      DB_USER: ${DB_USER:-camp}
+      DB_PASS: ${DB_PASS:-change-me}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@campmayagay.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@123}
+      STAFF_USERNAME: ${STAFF_USERNAME:-staff}
+      STAFF_EMAIL: ${STAFF_EMAIL:-staff@campmayagay.com}
+      STAFF_PASSWORD: ${STAFF_PASSWORD:-Staff@123}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+    volumes:
+      - uploads:/var/www/html/assets/uploads
+
+  # Optional Java reports service:  docker compose --profile java up -d
+  reports:
+    profiles: ["java"]
+    build: ./java
+    restart: unless-stopped
+    depends_on:
+      - web
+    environment:
+      PHP_BASE_URL: http://web
+    ports:
+      - "8081:8081"
+
+volumes:
+  db_data:
+  uploads:
